@@ -1,10 +1,10 @@
 module.exports = {
 	helpCmdPerPage: 10, //- Number of commands per page of help command
 	lyricsMaxResults: 5, //- Number of results for lyrics command (Do not touch this value if you don't know what you are doing)
-	adminId: "UserId", //- Replace UserId with the Discord ID of the admin of the bot
-	token: process.env.token || "", //- Bot's Token
-	clientId: process.env.clientId || "", //- ID of the bot
-	clientSecret: process.env.clientSecret || "", //- Client Secret of the bot
+	adminId: "267958390389604362", //- Replace UserId with the Discord ID of the admin of the bot
+	token: process.env.token || "MTE2NjU3OTkxNzU3Njc0MDkwNQ.GzUS_l.0KVVPPxgh56cKpElPqkuomHcsg6Yl0cidMMYeY", //- Bot's Token
+	clientId: process.env.clientId || "1166579917576740905", //- ID of the bot
+	clientSecret: process.env.clientSecret || "lwnmMBa5JHKEQY1Sxj-yE9Gm4XomWCae", //- Client Secret of the bot
 	port: 4200, //- Port of the API and Dashboard
 	scopes: ["identify", "guilds", "applications.commands"], //- Discord OAuth2 Scopes
 	inviteScopes: ["bot", "applications.commands"], // Invite link scopes
@@ -26,9 +26,9 @@ module.exports = {
 	nodes: [
 		{
 			identifier: "Main Node", //- Used for indentifier in stats commands.
-			host: "", //- The host name or IP of the lavalink server.
-			port: 80, // The port that lavalink is listening to. This must be a number!
-			password: "", //- The password of the lavalink server.
+			host: "narco.buses.rocks", //- The host name or IP of the lavalink server.
+			port: 2269, // The port that lavalink is listening to. This must be a number!
+			password: "glasshost1984", //- The password of the lavalink server.
 			retryAmount: 200, //- The amount of times to retry connecting to the node if connection got dropped.
 			retryDelay: 40, //- Delay between reconnect attempts if connection is lost.
 			secure: false, //- Can be either true or false. Only use true if ssl is enabled!
@@ -40,8 +40,8 @@ module.exports = {
 		status: "online", //- You can have online, idle, dnd and invisible (Note: invisible makes people think the bot is offline)
 		activities: [
 			{
-				name: "Music", //- Status Text
-				type: "LISTENING", //- PLAYING, WATCHING, LISTENING, STREAMING
+				name: "Lagu Hits Terkin!i", //- Status Text
+				type: "PLAYING", //- PLAYING, WATCHING, LISTENING, STREAMING
 			},
 		],
 	},
