@@ -1,190 +1,113 @@
-const SlashCommand = require("../../lib/SlashCommand");
-const { MessageEmbed } = require("discord.js");
-const escapeMarkdown = require("discord.js").Util.escapeMarkdown;
+const { ApplicationCommandOptionType, EmbedBuilder } = require('discord.js');
 
-const command = new SlashCommand()
-  .setName("play")
-  .setDescription(
-    "Searches and plays the requested song \nSupports: \nYoutube, Spotify, Deezer, Apple Music"
-  )
-  .addStringOption((option) =>
-    option
-      .setName("query")
-      .setDescription("What am I looking for?")
-      .setAutocomplete(true)
-      .setRequired(true)
-  )
-  .setRun(async (client, interaction, options) => {
-    let channel = await client.getChannel(client, interaction);
-    if (!channel) {
+const queueNames = [];
+
+async function play(client, interaction) {
+  try {
+    const query = interaction.options.getString('nama');
+
+    const player = client.riffy.createConnection({
+      guildId: interaction.guildId,
+      voiceChannel: interaction.member.voice.channelId,
+      textChannel: interaction.channelId,
+      deaf: true
+    });
+
+    await interaction.deferReply();
+
+    const resolve = await client.riffy.resolve({ query: query, requester: interaction.user });
+    const { loadType, tracks, playlistInfo } = resolve;
+
+    if (loadType === 'playlist') {
+      for (const track of resolve.tracks) {
+        track.info.requester = interaction.user;
+        player.queue.add(track);
+        queueNames.push(track.info.title);
+      }
+
+      if (!player.playing && !player.paused) player.play();
+
+    } else if (loadType === 'search' || loadType === 'track') {
+      const track = tracks.shift();
+      track.info.requester = interaction.user;
+
+      player.queue.add(track);
+      queueNames.push(track.info.title);
+
+      if (!player.playing && !player.paused) player.play();
+    } else {
+      const errorEmbed = new EmbedBuilder()
+        .setColor('#ff0000')
+        .setTitle('Error')
+        .setDescription('Tiada lagu yang dijumpai.');
+
+      await interaction.editReply({ embeds: [errorEmbed] });
       return;
     }
 
-    let node = await client.getLavalink(client);
-    if (!node) {
-      return interaction.reply({
-        embeds: [client.ErrorEmbed("Lavalink node is not connected")],
-      });
-    }
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    let player = client.createPlayer(interaction.channel, channel);
-
-    if (player.state !== "CONNECTED") {
-      player.connect();
-    }
-
-    if (channel.type == "GUILD_STAGE_VOICE") {
-      setTimeout(() => {
-        if (interaction.guild.members.me.voice.suppress == true) {
-          try {
-            interaction.guild.members.me.voice.setSuppressed(false);
-          } catch (e) {
-            interaction.guild.members.me.voice.setRequestToSpeak(true);
-          }
-        }
-      }, 2000); // Need this because discord api is buggy asf, and without this the bot will not request to speak on a stage - Darren
-    }
-
-    const ret = await interaction.reply({
-      embeds: [
-        new MessageEmbed()
-          .setColor(client.config.embedColor)
-          .setDescription(":mag_right: **Searching...**"),
-      ],
-      fetchReply: true,
-    });
-
-    let query = options.getString("query", true);
-    let res = await player.search(query, interaction.user).catch((err) => {
-      client.error(err);
-      return {
-        loadType: "LOAD_FAILED",
-      };
-    });
-
-    if (res.loadType === "LOAD_FAILED") {
-      if (!player.queue.current) {
-        player.destroy();
-      }
-      await interaction
-        .editReply({
-          embeds: [
-            new MessageEmbed()
-              .setColor("RED")
-              .setDescription("There was an error while searching"),
-          ],
-        })
-        .catch(this.warn);
-    }
-
-    if (res.loadType === "NO_MATCHES") {
-      if (!player.queue.current) {
-        player.destroy();
-      }
-      await interaction
-        .editReply({
-          embeds: [
-            new MessageEmbed()
-              .setColor("RED")
-              .setDescription("No results were found"),
-          ],
-        })
-        .catch(this.warn);
-    }
-
-    if (res.loadType === "TRACK_LOADED" || res.loadType === "SEARCH_RESULT") {
-      player.queue.add(res.tracks[0]);
-
-      if (!player.playing && !player.paused && !player.queue.size) {
-        player.play();
-      }
-      var title = escapeMarkdown(res.tracks[0].title);
-      var title = title.replace(/\]/g, "");
-      var title = title.replace(/\[/g, "");
-      let addQueueEmbed = new MessageEmbed()
-        .setColor(client.config.embedColor)
-        .setAuthor({ name: "Added to queue", iconURL: client.config.iconURL })
-        .setDescription(`[${title}](${res.tracks[0].uri})` || "No Title")
-        .setURL(res.tracks[0].uri)
-        .addFields(
-          {
-            name: "Added by",
-            value: `<@${interaction.user.id}>`,
-            inline: true,
-          },
-          {
-            name: "Duration",
-            value: res.tracks[0].isStream
-              ? `\`LIVE 🔴 \``
-              : `\`${client.ms(res.tracks[0].duration, {
-                  colonNotation: true,
-                  secondsDecimalDigits: 0,
-                })}\``,
-            inline: true,
-          }
-        );
-
-      try {
-        addQueueEmbed.setThumbnail(
-          res.tracks[0].displayThumbnail("maxresdefault")
-        );
-      } catch (err) {
-        addQueueEmbed.setThumbnail(res.tracks[0].thumbnail);
-      }
-
-      if (player.queue.totalSize > 1) {
-        addQueueEmbed.addFields({
-          name: "Position in queue",
-          value: `${player.queue.size}`,
-          inline: true,
-        });
-      } else {
-        player.queue.previous = player.queue.current;
-      }
-
-      await interaction.editReply({ embeds: [addQueueEmbed] }).catch(this.warn);
-    }
-
-    if (res.loadType === "PLAYLIST_LOADED") {
-      player.queue.add(res.tracks);
-
-      if (
-        !player.playing &&
-        !player.paused &&
-        player.queue.totalSize === res.tracks.length
-      ) {
-        player.play();
-      }
-
-      let playlistEmbed = new MessageEmbed()
-        .setColor(client.config.embedColor)
+    const embeds = [
+      new EmbedBuilder()
+        .setColor('#4d9fd6')
         .setAuthor({
-          name: "Playlist added to queue",
-          iconURL: client.config.iconURL,
+          name: 'Permohonan Telah Dikemaskini!',
+          iconURL: 'https://cdn.discordapp.com/attachments/1230824451990622299/1236794583732457473/7828-verify-ak.gif?ex=66394e37&is=6637fcb7&hm=923d3f3b300606a2ae4ceb7bae980fd533a4c5ee2cf73111569a892a595f1f69&',
+          url: 'https://discord.gg/X6RT5VdJPQ'
         })
-        .setThumbnail(res.tracks[0].thumbnail)
-        .setDescription(`[${res.playlist.name}](${query})`)
-        .addFields(
-          {
-            name: "Enqueued",
-            value: `\`${res.tracks.length}\` songs`,
-            inline: true,
-          },
-          {
-            name: "Playlist duration",
-            value: `\`${client.ms(res.playlist.duration, {
-              colonNotation: true,
-              secondsDecimalDigits: 0,
-            })}\``,
-            inline: true,
-          }
-        );
+        .setDescription('➡️ **Permohonan anda telah berjaya diproses.**\n➡️** Sila gunakan butang di bawah untuk mengawal radio ini.**'),
+      new EmbedBuilder()
+        .setColor('#ffea00')
+        .setAuthor({
+          name: 'Permohonan Telah Dikemaskini!',
+          iconURL: 'https://cdn.discordapp.com/attachments/1230824451990622299/1236802032938127470/4104-verify-yellow.gif?ex=66395527&is=663803a7&hm=71a7fba7f91897e52d9645b45d85d3da0ff97af2b63d10960004e68ff40d9c3b&',
+          url: 'https://discord.gg/X6RT5VdJPQ'
+        })
+        .setDescription('➡️ **Permohonan anda telah berjaya diproses.**\n➡️** Sila gunakan butang di bawah untuk mengawal radio ini.**'),
+      new EmbedBuilder()
+        .setColor('#FF0000')
+        .setAuthor({
+          name: 'Permohonan Telah Dikemaskini!',
+          iconURL: 'https://cdn.discordapp.com/attachments/1230824451990622299/1236802049190920202/4104-verify-red.gif?ex=6639552b&is=663803ab&hm=8dbc851fe56441b916a0044152dd517ed26434a11ee506518382f380c527c3bd&',
+          url: 'https://discord.gg/X6RT5VdJPQ'
+        })
+        .setDescription('➡️ **Permohonan anda telah berjaya diproses.**\n➡️** Sila gunakan butang di bawah untuk mengawal radio ini.**')
+    ];
 
-      await interaction.editReply({ embeds: [playlistEmbed] }).catch(this.warn);
-    }
+    const randomIndex = Math.floor(Math.random() * embeds.length);
+    await interaction.followUp({ embeds: [embeds[randomIndex]] });
 
-    if (ret) setTimeout(() => ret.delete().catch(this.warn), 20000);
-    return ret;
-  });
+  } catch (error) {
+    console.error('Error processing play command:', error);
+    const errorEmbed = new EmbedBuilder()
+      .setColor('#ff0000')
+      .setTitle('Error')
+      .setDescription('Terdapat ralat ketika memproses permohonan anda.');
 
-module.exports = command;
+    await interaction.editReply({ embeds: [errorEmbed] });
+  }
+}
+
+async function autocomplete(client, interaction) {
+  const focusedOption = interaction.options.getFocused();
+  const filtered = queueNames.filter(name => name.toLowerCase().includes(focusedOption.toLowerCase()));
+  await interaction.respond(
+    filtered.map(choice => ({ name: choice, value: choice }))
+  );
+}
+
+module.exports = {
+  name: "play",
+  description: "Mainkan lagu",
+  permissions: "0x0000000000000800",
+  options: [{
+    name: 'nama',
+    description: 'Masukkkan nama lagu / link atau playlist',
+    type: ApplicationCommandOptionType.String,
+    required: true,
+    autocomplete: true
+  }],
+  run: play,
+  autocomplete: autocomplete,
+  queueNames: queueNames
+};
